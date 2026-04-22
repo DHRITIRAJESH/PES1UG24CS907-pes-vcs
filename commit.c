@@ -194,47 +194,24 @@ int head_update(const ObjectID *new_commit) {
 //
 // Returns 0 on success, -1 on error.
 int commit_create(const char *message, ObjectID *commit_id_out) {
-    // 1. Build the tree from the index
     Commit c;
     memset(&c, 0, sizeof(c));
-
-    if (tree_from_index(&c.tree) != 0) {
-        fprintf(stderr, "error: failed to build tree from index\n");
-        return -1;
-    }
-
-    // 2. Read current HEAD as parent (may not exist for first commit)
-    ObjectID parent_id;
-    if (head_read(&parent_id) == 0) {
+    if (tree_from_index(&c.tree) != 0) return -1;
+    if (head_read(&c.parent) == 0) {
         c.has_parent = 1;
-        c.parent = parent_id;
     } else {
         c.has_parent = 0;
     }
-
-    // 3. Set author and timestamp
     snprintf(c.author, sizeof(c.author), "%s", pes_author());
     c.timestamp = (uint64_t)time(NULL);
     snprintf(c.message, sizeof(c.message), "%s", message);
-
-    // 4. Serialize
     void *data;
-    size_t data_len;
-    if (commit_serialize(&c, &data, &data_len) != 0) return -1;
-
-    // 5. Write to object store
-    ObjectID commit_id;
-    int rc = object_write(OBJ_COMMIT, data, data_len, &commit_id);
+    size_t len;
+    if (commit_serialize(&c, &data, &len) != 0) return -1;
+    if (object_write(OBJ_COMMIT, data, len, commit_id_out) != 0) {
+        free(data);
+        return -1;
+    }
     free(data);
-    if (rc != 0) return -1;
-
-    // 6. Update HEAD
-    if (head_update(&commit_id) != 0) return -1;
-
-    if (commit_id_out) *commit_id_out = commit_id;
-
-    char hex[HASH_HEX_SIZE + 1];
-    hash_to_hex(&commit_id, hex);
-    printf("[main %.7s] %s\n", hex, message);
-    return 0;
+    return head_update(commit_id_out);
 }
