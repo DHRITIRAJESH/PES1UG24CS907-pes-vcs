@@ -140,17 +140,15 @@ int index_status(const Index *index) {
 int index_load(Index *index) {
     index->count = 0;
     FILE *f = fopen(INDEX_FILE, "r");
-    if (!f) return 0; // no index file yet is not an error
-
+    if (!f) return 0;
     char hex[HASH_HEX_SIZE + 1];
-    while (index->count < MAX_INDEX_ENTRIES) {
-        IndexEntry *e = &index->entries[index->count];
-        int ret = fscanf(f, "%o %64s %lu %lu %255s\n",
-                         &e->mode, hex,
-                         &e->mtime_sec, &e->size,
-                         e->path);
-        if (ret != 5) break;
-        if (hex_to_hash(hex, &e->hash) != 0) { fclose(f); return -1; }
+    while (fscanf(f, "%o %64s %llu %u %511s",
+                  &index->entries[index->count].mode,
+                  hex,
+                  (unsigned long long*)&index->entries[index->count].mtime_sec,
+                  &index->entries[index->count].size,
+                  index->entries[index->count].path) == 5) {
+        hex_to_hash(hex, &index->entries[index->count].hash);
         index->count++;
     }
     fclose(f);
@@ -170,15 +168,19 @@ int index_load(Index *index) {
 static int compare_entries(const void *a, const void *b) {
     return strcmp(((const IndexEntry *)a)->path, ((const IndexEntry *)b)->path);
 }
-
 int index_save(const Index *index) {
-    // Sort a copy of entries
     Index sorted;
-    sorted.count = index->count;
 
+    // Copy entries safely
+    sorted.count = index->count;
     for (int i = 0; i < index->count; i++) {
-    sorted.entries[i] = index->entries[i];
-    }    qsort(sorted.entries, sorted.count, sizeof(IndexEntry), compare_entries);
+        sorted.entries[i] = index->entries[i];
+    }
+
+    // Sort only if needed
+    if (sorted.count > 0) {
+        qsort(sorted.entries, sorted.count, sizeof(IndexEntry), compare_entries);
+    }
 
     char tmp_path[256];
     snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", INDEX_FILE);
@@ -187,11 +189,15 @@ int index_save(const Index *index) {
     if (!f) return -1;
 
     char hex[HASH_HEX_SIZE + 1];
+
     for (int i = 0; i < sorted.count; i++) {
         IndexEntry *e = &sorted.entries[i];
+
         hash_to_hex(&e->hash, hex);
+
         fprintf(f, "%o %s %llu %u %s\n",
-                e->mode, hex,
+                e->mode,
+                hex,
                 (unsigned long long)e->mtime_sec,
                 e->size,
                 e->path);
