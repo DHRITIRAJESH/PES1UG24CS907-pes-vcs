@@ -173,8 +173,12 @@ static int compare_entries(const void *a, const void *b) {
 
 int index_save(const Index *index) {
     // Sort a copy of entries
-    Index sorted = *index;
-    qsort(sorted.entries, sorted.count, sizeof(IndexEntry), compare_entries);
+    Index sorted;
+    sorted.count = index->count;
+
+    for (int i = 0; i < index->count; i++) {
+    sorted.entries[i] = index->entries[i];
+    }    qsort(sorted.entries, sorted.count, sizeof(IndexEntry), compare_entries);
 
     char tmp_path[256];
     snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", INDEX_FILE);
@@ -186,9 +190,9 @@ int index_save(const Index *index) {
     for (int i = 0; i < sorted.count; i++) {
         IndexEntry *e = &sorted.entries[i];
         hash_to_hex(&e->hash, hex);
-        fprintf(f, "%o %s %lu %u %s\n",
+        fprintf(f, "%o %s %llu %u %s\n",
                 e->mode, hex,
-                (unsigned long)e->mtime_sec,
+                (unsigned long long)e->mtime_sec,
                 e->size,
                 e->path);
     }
